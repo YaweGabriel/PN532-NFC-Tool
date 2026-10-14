@@ -91,9 +91,24 @@ export class Pn532Service {
     this.mock = false
     this.port = new SerialPort({ path: portPath, baudRate: baud, autoOpen: false })
     this.rxBuf = []
-    await new Promise<void>((resolve, reject) => {
-      this.port!.open((err) => (err ? reject(err) : resolve()))
-    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.port!.open((err) => (err ? reject(err) : resolve()))
+      })
+    } catch (e) {
+      const msg = (e as Error).message
+      if (/access denied|permission denied/i.test(msg)) {
+        throw new Error(
+          `Could not open ${portPath}: access denied — another program is holding it. Disconnect/close the Elechouse web-tester browser tab (Web Serial locks the port exclusively) and quit any duplicate app instances, then retry. Still stuck? Unplug/replug the module. (Detail: ${msg})`,
+        )
+      }
+      if (/file not found|no such file|does not exist/i.test(msg)) {
+        throw new Error(
+          `Could not open ${portPath}: port vanished. Unplug/replug the module, hit refresh, and pick the new COM entry. (Detail: ${msg})`,
+        )
+      }
+      throw new Error(`Could not open ${portPath}: ${msg}`)
+    }
     this.port.on('data', (chunk: Buffer) => this.onData([...chunk]))
     this.port.on('error', (err) => this.log('error', `Serial error: ${err.message}`))
     // Onboard USB bridges (CH340/CP2102) need a beat after open before TX is
