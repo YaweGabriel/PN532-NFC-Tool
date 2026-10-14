@@ -96,6 +96,9 @@ export class Pn532Service {
     })
     this.port.on('data', (chunk: Buffer) => this.onData([...chunk]))
     this.port.on('error', (err) => this.log('error', `Serial error: ${err.message}`))
+    // Onboard USB bridges (CH340/CP2102) need a beat after open before TX is
+    // reliable (nfcpy notes up to ~1s first-transfer latency on fresh opens).
+    await sleep(300)
     this.log('info', `Opened ${portPath} @ ${baud} baud`)
     try {
       const fw = await this.handshake(baud)
@@ -121,7 +124,7 @@ export class Pn532Service {
    *  Harmless when already awake — the PN532 ignores non-preamble bytes. */
   private async wakeup(): Promise<void> {
     await this.writeRaw([0x55, 0x55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    await sleep(150)
+    await sleep(250)
     await new Promise<void>((resolve) => this.port!.flush(() => resolve()))
     this.rxBuf = []
   }
