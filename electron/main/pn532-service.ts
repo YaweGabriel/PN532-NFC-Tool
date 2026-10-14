@@ -27,6 +27,8 @@ export interface StatusInfo {
   baud: number
   firmware: string | null
   lastTarget: TargetInfo | null
+  rxTotal: number
+  txTotal: number
 }
 
 const MOCK_FIRMWARE = { ic: 0x32, ver: 1, rev: 6, support: 7 }
@@ -44,6 +46,8 @@ export class Pn532Service {
   private lastTarget: TargetInfo | null = null
   private mock = false
   private rxTotal = 0
+  private txTotal = 0
+  private firstRx: number[] = []
 
   onLog(cb: (e: LogEntry) => void) {
     this.logCb = cb
@@ -76,6 +80,8 @@ export class Pn532Service {
     this.portPath = portPath
     this.baud = baud
     this.rxTotal = 0
+    this.txTotal = 0
+    this.firstRx = []
     if (portPath === '__mock__') {
       this.mock = true
       this.firmware = `PN532 v${MOCK_FIRMWARE.ver}.${MOCK_FIRMWARE.rev} (mock)`
@@ -106,7 +112,7 @@ export class Pn532Service {
         )
       }
       throw new Error(
-        `PN532 sent ${this.rxTotal} byte(s) but no valid HSU frame @ ${this.baud} baud (tried 115200/57600). Likely baud mismatch or the module is in I2C/SPI mode — set BOTH DIP switches OFF for HSU and power-cycle. Last error: ${msg}`,
+        `PN532 sent ${this.rxTotal} byte(s) but no valid HSU frame @ ${this.baud} baud (tried 115200/57600). First bytes: ${this.firstRx.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') || '—'}. Likely baud mismatch or the module is in I2C/SPI mode — set BOTH DIP switches OFF for HSU and power-cycle. Last error: ${msg}`,
       )
     }
   }
@@ -125,6 +131,7 @@ export class Pn532Service {
     await new Promise<void>((resolve, reject) => {
       this.port!.write(Buffer.from(bytes), (err) => (err ? reject(err) : resolve()))
     })
+    this.txTotal += bytes.length
     await new Promise<void>((resolve) => this.port!.drain(() => resolve()))
   }
 
@@ -184,11 +191,56 @@ export class Pn532Service {
       baud: this.baud,
       firmware: this.firmware,
       lastTarget: this.lastTarget,
+      rxTotal: this.rxTotal,
+      txTotal: this.txTotal,
+    }
+  }
+
+  /**
+   * Adapter loopback self-test: with the module UNPLUGGED and the adapter's
+   * TX pin shorted to its RX pin, anything written must echo back. Proves the
+   * PC → driver → adapter → app path works, isolating module-side problems.
+   */
+  async echoTest(
+    portPath: string,
+    baud = 115200,
+  ): Promise<{ ok: boolean; sent: string; received: string; message: string }> {
+    await this.disconnect()
+    const hex = (b: number[]) => b.map((x) => x.toString(16).padStart(2, '0').toUpperCase()).join(' ')
+    const pattern = [0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x31, 0x32, 0x33] // "HELLO123"
+    const port = new SerialPort({ path: portPath, baudRate: baud, autoOpen: false })
+    await new Promise<void>((resolve, reject) => {
+      port.open((err) => (err ? reject(err) : resolve()))
+    })
+    try {
+      const received: number[] = []
+      port.on('data', (chunk: Buffer) => received.push(...chunk))
+      await new Promise<void>((resolve) => port.flush(() => resolve()))
+      await new Promise<void>((resolve, reject) => {
+        port.write(Buffer.from(pattern), (err) => (err ? reject(err) : resolve()))
+      })
+      await new Promise<void>((resolve) => port.drain(() => resolve()))
+      await sleep(800)
+      const ok = received.length >= pattern.length && pattern.every((b, i) => received[i] === b)
+      const sentHex = hex(pattern)
+      const rxHex = hex(received)
+      this.log(ok ? 'info' : 'error', `Loopback ${ok ? 'PASS' : 'FAIL'} on ${portPath}`, `TX ${sentHex} / RX ${rxHex || '—'}`)
+      return {
+        ok,
+        sent: sentHex,
+        received: rxHex,
+        message: ok
+          ? `Loopback PASS — adapter + driver + port are fine. The silence is on the module side (mode switches, wiring, power).`
+          : `Loopback FAIL — TX shorted to RX did not echo (RX: ${rxHex || 'nothing'}). Check the short jumper, try another USB port/cable, reinstall the adapter driver.`,
+      }
+    } finally {
+      await new Promise<void>((resolve) => port.close(() => resolve()))
     }
   }
 
   private onData(bytes: number[]) {
     this.rxTotal += bytes.length
+    if (this.firstRx.length < 32) this.firstRx.push(...bytes.slice(0, 32 - this.firstRx.length))
     this.rxBuf.push(...bytes)
     for (;;) {
       let decoded: { frame: DecodedFrame; consumed: number } | null = null
@@ -237,6 +289,7 @@ export class Pn532Service {
     await new Promise<void>((resolve, reject) => {
       this.port!.write(frame, (err) => (err ? reject(err) : resolve()))
     })
+    this.txTotal += frame.length
     const rsp = await promise
     if (rsp.kind === 'error') throw new Error('PN532 error frame (application error)')
     if (rsp.command !== wantRsp) throw new Error(`Unexpected response 0x${rsp.command?.toString(16)} (wanted 0x${wantRsp.toString(16)})`)

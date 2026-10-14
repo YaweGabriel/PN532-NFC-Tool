@@ -41,6 +41,8 @@ function usePn532Events() {
 
 function ConnectionBar() {
   const { ports, port, baud, connected, mock, busy, set } = useStore()
+  const [echo, setEcho] = useState<string | null>(null)
+  const [echoBusy, setEchoBusy] = useState(false)
   const refresh = async () => {
     set({ busy: true, error: null })
     try {
@@ -129,6 +131,39 @@ function ConnectionBar() {
             )}
           </div>
         </div>
+        <details className="mt-4 rounded-md border bg-surface px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Module silent? Run the adapter loopback self-test
+          </summary>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Unplug the PN532 module, short the adapter's <span className="font-mono">TX to RX</span> with a
+            jumper wire, then run the test. A <span className="font-mono">PASS</span> proves PC → driver →
+            adapter works and the fault is module-side (switches / wiring / power).
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!port || port === '__mock__' || echoBusy}
+              loading={echoBusy}
+              onClick={async () => {
+                setEchoBusy(true)
+                setEcho(null)
+                try {
+                  const r = await api().echoTest(port, baud)
+                  setEcho(`${r.ok ? 'PASS' : 'FAIL'} — ${r.message} (TX ${r.sent} / RX ${r.received || '—'})`)
+                } catch (e) {
+                  setEcho(`ERROR — ${(e as Error).message}`)
+                } finally {
+                  setEchoBusy(false)
+                }
+              }}
+            >
+              Run loopback test
+            </Button>
+          </div>
+          {echo && <p className="mt-2 font-mono text-xs whitespace-pre-wrap">{echo}</p>}
+        </details>
       </CardContent>
     </Card>
   )

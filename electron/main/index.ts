@@ -36,6 +36,7 @@ function createWindow() {
 
 function registerIpc() {
   ipcMain.handle('ports:list', () => pn532.listPorts())
+  ipcMain.handle('adapter:echo', (_e, port: string, baud = 115200) => pn532.echoTest(port, baud))
   ipcMain.handle('pn532:connect', (_e, port: string, baud = 115200) => pn532.connect(port, baud))
   ipcMain.handle('pn532:disconnect', () => pn532.disconnect())
   ipcMain.handle('pn532:status', () => pn532.status())

@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 const api = {
   listPorts: (): Promise<Array<{ path: string; manufacturer?: string; friendly?: string }>> =>
     ipcRenderer.invoke('ports:list'),
+  echoTest: (port: string, baud = 115200) => ipcRenderer.invoke('adapter:echo', port, baud),
   connect: (port: string, baud = 115200) => ipcRenderer.invoke('pn532:connect', port, baud),
   disconnect: () => ipcRenderer.invoke('pn532:disconnect'),
   status: () => ipcRenderer.invoke('pn532:status'),
