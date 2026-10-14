@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge, Input, Label, Select } from '@/components/ui/primitives'
 import { useStore, api, type LogEntry, type TargetInfo } from '@/store'
 import { toHex } from '@/lib/utils'
-import { decodeNdefMessage, extractNdefTlv } from '@shared/pn532/ndef'
+import { decodeNdefMessage, extractNdefTlv, buildNdefMessage, buildNdefTlv, type NdefWriteRecord } from '@shared/pn532/ndef'
 import { useState } from 'react'
 
 function PageContainer({ children }: { children: React.ReactNode }) {
@@ -307,6 +307,7 @@ function TagsTab() {
   }
 
   return (
+    <div className="grid gap-4">
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
@@ -352,6 +353,96 @@ function TagsTab() {
         </CardContent>
       </Card>
     </div>
+    <NdefWriteCard />
+    </div>
+  )
+}
+
+function NdefWriteCard() {
+  const connected = useStore((s) => s.connected)
+  const busy = useStore((s) => s.busy)
+  const set = useStore((s) => s.set)
+  const [kind, setKind] = useState<'text' | 'number' | 'uri'>('text')
+  const [value, setValue] = useState('Hello NFC')
+  const [lang, setLang] = useState('en')
+  const [result, setResult] = useState('')
+
+  const preview = (() => {
+    try {
+      const rec: NdefWriteRecord =
+        kind === 'text' ? { kind: 'text', text: value, lang: lang || 'en' }
+        : kind === 'number' ? { kind: 'number', value }
+        : { kind: 'uri', uri: value }
+      const tlv = buildNdefTlv(buildNdefMessage([rec]))
+      return { ok: true as const, tlv, bytes: tlv.length, pages: tlv.length / 4 }
+    } catch (e) {
+      return { ok: false as const, error: (e as Error).message }
+    }
+  })()
+
+  const write = async () => {
+    if (!preview.ok) return
+    set({ busy: true, error: null })
+    setResult('')
+    try {
+      const r = await api().ndefWrite(preview.tlv) as { pages: number; bytes: number; capacity: number; verify: string }
+      setResult(`WROTE ${r.bytes}B in ${r.pages} pages (tag capacity ${r.capacity}B)\nRead-back: ${r.verify}`)
+    } catch (e) {
+      set({ error: (e as Error).message })
+    } finally {
+      set({ busy: false })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Write text · number · URL to tag</CardTitle>
+        <CardDescription>
+          NDEF record → NTAG/Ultralight user memory from page 4. Capacity is read from the
+          tag first; pages 0–3 are never touched. Hold the tag steady until the write finishes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 md:grid-cols-[180px_1fr_140px]">
+          <div className="grid gap-1.5">
+            <Label>Record type</Label>
+            <Select value={kind} onChange={(e) => {
+              const k = e.target.value as 'text' | 'number' | 'uri'
+              setKind(k)
+              setValue(k === 'text' ? 'Hello NFC' : k === 'number' ? '42' : 'https://example.com')
+            }}>
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="uri">URL</option>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>{kind === 'text' ? 'Text' : kind === 'number' ? 'Number (stored as text)' : 'URL (https:// compressed automatically)'}</Label>
+            <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={kind === 'uri' ? 'https://…' : kind === 'number' ? '42' : 'Hello NFC'} />
+          </div>
+          {kind === 'text' ? (
+            <div className="grid gap-1.5">
+              <Label>Language</Label>
+              <Input value={lang} onChange={(e) => setLang(e.target.value)} placeholder="en" maxLength={8} />
+            </div>
+          ) : <div />}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button variant="ink" onClick={write} disabled={!connected || !preview.ok || !value} loading={busy}>
+            Write to tag
+          </Button>
+          {preview.ok ? (
+            <span className="font-mono text-xs text-muted-foreground">
+              {preview.bytes}B · {preview.pages} pages · fits NTAG213 (144B){preview.bytes > 144 ? ' — NO, too big, shorten it' : ''}
+            </span>
+          ) : (
+            <span className="font-mono text-xs text-destructive">{preview.error}</span>
+          )}
+        </div>
+        {result && <pre className="mt-3 rounded-md border bg-surface p-3 font-mono text-xs whitespace-pre-wrap">{result}</pre>}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -469,7 +560,7 @@ export default function App() {
             tab === 'reader'
               ? 'Identify the module, configure the SAM, and poll ISO14443A targets.'
               : tab === 'tags'
-                ? 'MIFARE Classic blocks, NTAG pages, and NDEF Text/URI decode.'
+                ? 'MIFARE Classic blocks, NTAG pages, NDEF decode, and NDEF text/number/URL writing.'
                 : 'Raw PN532 command exchange with full HSU frame trace.'
           }
         />

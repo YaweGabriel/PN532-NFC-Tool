@@ -10,7 +10,8 @@ components come from **[opendraft UI System](https://ui-system-virid.vercel.app/
 - **Reader dashboard** — serial connect @115200, `GetFirmwareVersion`, `SAMConfiguration`,
   `InListPassiveTarget` poll once / auto-poll, UID/SAK/type display.
 - **Tag read/write + NDEF** — MIFARE Classic auth/read/write (trailer blocks protected),
-  NTAG/Ultralight 4-byte page read/write (pages 0–3 locked), NDEF Text/URI decode.
+  NTAG/Ultralight 4-byte page read/write (pages 0–3 locked), NDEF Text/URI decode,
+  and NDEF **write** (Text / Number / URL records with capacity check + read-back verify).
 - **APDU console + logs** — raw PN532 command send, full HSU TX/RX frame trace, export-friendly log.
 - **Mock device** — explore all screens without hardware (`Mock device` port).
 

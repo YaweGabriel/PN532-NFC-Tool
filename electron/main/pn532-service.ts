@@ -1,6 +1,7 @@
 import { SerialPort } from 'serialport'
 import { encodeCommand, tryDecodeOne, ACK_FRAME, type DecodedFrame } from '../../src/shared/pn532/frame.js'
 import { CMD, parseFirmwareVersion, samConfigParams, inListPassiveTargetParams, mifareAuthParams } from '../../src/shared/pn532/commands.js'
+import { decodeNdefMessage, extractNdefTlv, parseCapabilityContainer } from '../../src/shared/pn532/ndef.js'
 
 export interface LogEntry {
   id: number
@@ -455,8 +456,54 @@ export class Pn532Service {
     return { ok: true }
   }
 
-  async rawCommand(commandHex: string, timeoutMs = 2000): Promise<{ tx: string; rx: string; data: number[] }> {
-    const bytes = commandHex
+  /**
+   * Write a pre-built NDEF TLV (multiple of 4 bytes) to an NTAG/Ultralight tag
+   * starting at user page 4. Validates the capability container first, refuses
+   * oversize payloads, then reads back + decodes for verification.
+   * Manufacturer/lock pages 0–3 are never touched.
+   */
+  async ndefWriteTag(tlv: number[]): Promise<{ pages: number; bytes: number; capacity: number; verify: string }> {
+    if (tlv.length === 0 || tlv.length % 4 !== 0) throw new Error('TLV must be a non-empty multiple of 4 bytes')
+    if (tlv.length > 888) throw new Error('TLV exceeds the largest NTAG user area (888B)')
+    if (this.mock) {
+      return { pages: tlv.length / 4, bytes: tlv.length, capacity: 144, verify: '(mock — write assumed OK)' }
+    }
+    // 1. Capability container (page 3) → capacity + NDEF-formatted check.
+    //    0x30 returns 16B (pages 3–6); page 3 is bytes 1–4 of the payload.
+    const ccRsp = await this.transact(CMD.InDataExchange, [0x01, 0x30, 0x03], 2000)
+    if (ccRsp[0] !== 0x00) throw new Error(`CC read failed (err 0x${ccRsp[0]?.toString(16)}) — is a tag in the field?`)
+    const cc = parseCapabilityContainer(ccRsp.slice(1, 5))
+    if (!cc.magic) throw new Error('Tag is not NDEF formatted (bad capability container). Use an NDEF tag.')
+    if (!cc.readWrite) throw new Error('Tag reports read-only access.')
+    if (tlv.length > cc.sizeBytes) {
+      throw new Error(
+        `Message needs ${tlv.length}B but this tag holds ${cc.sizeBytes}B. Shorten the text/URL or use a bigger tag (NTAG215/216).`,
+      )
+    }
+    // 2. Write 4 bytes per page from page 4 upward.
+    const pages = tlv.length / 4
+    for (let p = 0; p < pages; p++) {
+      const chunk = tlv.slice(p * 4, p * 4 + 4)
+      const rsp = await this.transact(CMD.InDataExchange, [0x01, 0xa2, 0x04 + p, ...chunk], 2000)
+      if (rsp[0] !== 0x00) throw new Error(`Write failed at page ${0x04 + p} (err 0x${rsp[0]?.toString(16)})`)
+    }
+    // 3. Read back (0x30 returns 4 pages per call) and decode to verify.
+    const dump: number[] = []
+    for (let pg = 4; pg < 4 + pages; pg += 4) {
+      const rsp = await this.transact(CMD.InDataExchange, [0x01, 0x30, pg], 2000)
+      if (rsp[0] !== 0x00) throw new Error(`Verify read failed at page ${pg}`)
+      dump.push(...rsp.slice(1, 17))
+    }
+    const msgBytes = extractNdefTlv(dump.slice(0, tlv.length))
+    const recs = msgBytes ? decodeNdefMessage(msgBytes) : []
+    const verify = recs.length
+      ? recs.map((r) => r.text ?? r.uri ?? r.type).join(' | ')
+      : 'written, but read-back decode found no records — re-poll the tag'
+    this.log('info', `NDEF wrote ${tlv.length}B in ${pages} pages (capacity ${cc.sizeBytes}B)`)
+    return { pages, bytes: tlv.length, capacity: cc.sizeBytes, verify }
+  }
+
+  async rawCommand(commandHex: string, timeoutMs = 2000): Promise<{ tx: string; rx: string; data: number[] }> {    const bytes = commandHex
       .trim()
       .split(/[\s,]+/)
       .filter(Boolean)

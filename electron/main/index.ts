@@ -65,6 +65,7 @@ function registerIpc() {
   ipcMain.handle('pn532:raw', (_e, args: { commandHex: string; timeoutMs?: number }) =>
     pn532.rawCommand(args.commandHex, args.timeoutMs ?? 2000),
   )
+  ipcMain.handle('pn532:ndef-write', (_e, args: { bytes: number[] }) => pn532.ndefWriteTag(args.bytes))
   pn532.onLog((entry) => win?.webContents.send('pn532:log', entry))
 }
 
