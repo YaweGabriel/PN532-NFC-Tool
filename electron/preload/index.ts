@@ -20,6 +20,7 @@ const api = {
   ntagWrite: (page: number, dataHex: string) => ipcRenderer.invoke('pn532:ntag-write', { page, dataHex }),
   raw: (commandHex: string, timeoutMs = 2000) => ipcRenderer.invoke('pn532:raw', { commandHex, timeoutMs }),
   ndefWrite: (bytes: number[]) => ipcRenderer.invoke('pn532:ndef-write', { bytes }),
+  openUrl: (url: string) => ipcRenderer.invoke('shell:open-url', url),
   onTarget: (cb: (t: unknown) => void) => {
     const fn = (_e: unknown, t: unknown) => cb(t)
     ipcRenderer.on('pn532:target', fn)

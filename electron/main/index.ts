@@ -66,6 +66,21 @@ function registerIpc() {
     pn532.rawCommand(args.commandHex, args.timeoutMs ?? 2000),
   )
   ipcMain.handle('pn532:ndef-write', (_e, args: { bytes: number[] }) => pn532.ndefWriteTag(args.bytes))
+  // Locked-down link opener for the scan permission modal. Only http(s) —
+  // file:, javascript:, data: etc. are rejected before reaching the OS.
+  ipcMain.handle('shell:open-url', (_e, url: string) => {
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new Error('Not a valid URL')
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`Refusing to open non-web URL (protocol ${parsed.protocol})`)
+    }
+    void shell.openExternal(parsed.toString())
+    return { ok: true as const }
+  })
   pn532.onLog((entry) => win?.webContents.send('pn532:log', entry))
 }
 

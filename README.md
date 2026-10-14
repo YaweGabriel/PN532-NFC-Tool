@@ -13,6 +13,10 @@ components come from **[opendraft UI System](https://ui-system-virid.vercel.app/
   NTAG/Ultralight 4-byte page read/write (pages 0–3 locked), NDEF Text/URI decode,
   and NDEF **write** (Text / Number / URL records with capacity check + read-back verify).
 - **APDU console + logs** — raw PN532 command send, full HSU TX/RX frame trace, export-friendly log.
+- **Scan & view** — tap-to-read module: text/numbers display inline, URL records
+  trigger a permission modal (full URL + domain, safe-default focus, Esc/backdrop
+  denies, asked once per tag) before opening in the browser via an http(s)-only
+  main-process opener.
 - **Mock device** — explore all screens without hardware (`Mock device` port).
 
 ## Hardware wiring (Elechouse PN532 V3, USB-powered)

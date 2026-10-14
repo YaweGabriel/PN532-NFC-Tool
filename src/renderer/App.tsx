@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { Moon, Sun, Nfc, Tags, TerminalSquare, Trash2, PlugZap, Unplug, RefreshCw, Radio } from 'lucide-react'
+import { useRef } from 'react'
+import { Moon, Sun, Nfc, Tags, TerminalSquare, Trash2, PlugZap, Unplug, RefreshCw, Radio, ScanLine, ShieldAlert, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge, Input, Label, Select } from '@/components/ui/primitives'
@@ -446,8 +447,201 @@ function NdefWriteCard() {
   )
 }
 
-function ConsoleTab() {
-  const logs = useStore((s) => s.logs)
+function UrlPermissionModal({ uri, onAllow, onDeny }: { uri: string; onAllow: () => void; onDeny: () => void }) {
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDeny()
+    }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [onDeny])
+
+  let host = uri
+  try {
+    host = new URL(uri).hostname || uri
+  } catch {
+    /* show raw */
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="url-modal-title">
+      <div className="absolute inset-0 bg-ink/40" onClick={onDeny} aria-hidden />
+      <div className="relative w-full max-w-md rounded-lg border bg-popover p-6 text-popover-foreground shadow-xl">
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-warning/15 text-warning">
+            <ShieldAlert className="size-5" />
+          </span>
+          <div>
+            <h2 id="url-modal-title" className="heading text-xl">Open external link?</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              This NFC tag wants to open a web page. Links leave this app — only continue if you trust the tag.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-md border bg-surface px-3 py-2.5">
+          <p className="font-mono text-xs break-all">{uri}</p>
+          <p className="mt-1 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">domain: {host}</p>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" onClick={onDeny} autoFocus>Stay here</Button>
+          <Button variant="ink" onClick={onAllow}><ExternalLink className="size-4" /> Open link</Button>
+        </div>
+        <p className="mt-3 text-center font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+          Esc / backdrop = stay · asked once per tag
+        </p>
+      </div>
+    </div>
+  )
+}
+
+interface ScanResult {
+  uid?: string
+  type?: string
+  texts: string[]
+  uris: string[]
+  note?: string
+}
+
+function ScanTab() {
+  const connected = useStore((s) => s.connected)
+  const busy = useStore((s) => s.busy)
+  const set = useStore((s) => s.set)
+  const [result, setResult] = useState<ScanResult | null>(null)
+  const [pendingUrl, setPendingUrl] = useState<{ uri: string; key: string } | null>(null)
+  const [auto, setAuto] = useState(false)
+  const seen = useRef(new Set<string>())
+
+  const readTag = async (silent = false) => {
+    if (!silent) {
+      set({ busy: true, error: null })
+      setResult(null)
+    }
+    try {
+      const t = (await api().pollOnce(1500)) as TargetInfo
+      if (!t?.found) {
+        if (!silent) set({ error: 'No card in field. Hold a tag 1–3 cm from the antenna and retry.' })
+        return
+      }
+      const type = t.type ?? ''
+      const isType2 = type.includes('NTAG') || type.includes('Ultralight') || t.sak === '00'
+      if (!isType2) {
+        setResult({
+          uid: t.uid, type: t.type, texts: [], uris: [],
+          note: `UID ${t.uid ?? '?'} (${type || 'unknown type'}). Auto-read covers NTAG/Ultralight here — use the Tags tab for MIFARE Classic blocks.`,
+        })
+        return
+      }
+      const bytes: number[] = []
+      for (let p = 4; p < 36; p++) {
+        const r = await api().ntagRead(p)
+        bytes.push(...((r.bytes as number[]) ?? []).slice(0, 4))
+      }
+      const tlv = extractNdefTlv(bytes)
+      const recs = tlv ? decodeNdefMessage(tlv) : []
+      const texts = recs.map((r) => r.text).filter((x): x is string => !!x)
+      const uris = recs.map((r) => r.uri).filter((x): x is string => !!x)
+      setResult({
+        uid: t.uid, type: t.type, texts, uris,
+        note: recs.length ? undefined : 'Tag is empty or carries no NDEF message.',
+      })
+      for (const uri of uris) {
+        const key = `${t.uid}|${uri}`
+        if (!seen.current.has(key)) {
+          seen.current.add(key)
+          setPendingUrl({ uri, key })
+          break
+        }
+      }
+    } catch (e) {
+      if (!silent) set({ error: (e as Error).message })
+    } finally {
+      if (!silent) set({ busy: false })
+    }
+  }
+
+  useEffect(() => {
+    if (!auto || !connected) return
+    const id = setInterval(() => {
+      if (!pendingUrl) void readTag(true)
+    }, 2000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, connected, pendingUrl])
+
+  const allowUrl = async () => {
+    if (!pendingUrl) return
+    const uri = pendingUrl.uri
+    setPendingUrl(null)
+    try {
+      await api().openUrl(uri)
+    } catch (e) {
+      set({ error: (e as Error).message })
+    }
+  }
+
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Tap to read</CardTitle>
+          <CardDescription>Text shows inline · links always ask permission first, once per tag.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ink" onClick={() => readTag(false)} disabled={!connected} loading={busy}>
+              <ScanLine className="size-4" /> Scan tag
+            </Button>
+            <Button variant={auto ? 'destructive' : 'secondary'} onClick={() => setAuto(!auto)} disabled={!connected}>
+              {auto ? 'Stop auto-scan' : 'Auto-scan'}
+            </Button>
+          </div>
+          {!connected && <p className="mt-3 text-sm text-muted-foreground">Connect first (or use the Mock device to preview).</p>}
+        </CardContent>
+      </Card>
+
+      {result && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{result.type ?? 'Tag'}</CardTitle>
+            <CardDescription>UID {result.uid ?? '?'}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3">
+              {result.texts.map((t, i) => (
+                <div key={`t${i}`} className="rounded-md border bg-surface px-4 py-3">
+                  <p className="eyebrow text-muted-foreground">text record {result.texts.length > 1 ? i + 1 : ''}</p>
+                  <p className="mt-1.5 text-lg">{t}</p>
+                </div>
+              ))}
+              {result.uris.map((u, i) => (
+                <div key={`u${i}`} className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-surface px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="eyebrow text-muted-foreground">link record {result.uris.length > 1 ? i + 1 : ''}</p>
+                    <p className="mt-1.5 font-mono text-sm break-all text-brand">{u}</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    const key = `${result.uid}|${u}`
+                    seen.current.add(key)
+                    setPendingUrl({ uri: u, key })
+                  }}>
+                    <ExternalLink className="size-4" /> Open…
+                  </Button>
+                </div>
+              ))}
+              {result.note && <p className="text-sm text-muted-foreground">{result.note}</p>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {pendingUrl && (
+        <UrlPermissionModal uri={pendingUrl.uri} onAllow={allowUrl} onDeny={() => setPendingUrl(null)} />
+      )}
+    </div>
+  )
+}
+
+function ConsoleTab() {  const logs = useStore((s) => s.logs)
   const clearLogs = useStore((s) => s.clearLogs)
   const connected = useStore((s) => s.connected)
   const set = useStore((s) => s.set)
@@ -544,6 +738,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-1">
             <Button variant={tab === 'reader' ? 'secondary' : 'ghost'} size="sm" onClick={() => set({ tab: 'reader' })}><Nfc className="size-4" /> Reader</Button>
+            <Button variant={tab === 'scan' ? 'secondary' : 'ghost'} size="sm" onClick={() => set({ tab: 'scan' })}><ScanLine className="size-4" /> Scan</Button>
             <Button variant={tab === 'tags' ? 'secondary' : 'ghost'} size="sm" onClick={() => set({ tab: 'tags' })}><Tags className="size-4" /> Tags</Button>
             <Button variant={tab === 'console' ? 'secondary' : 'ghost'} size="sm" onClick={() => set({ tab: 'console' })}><TerminalSquare className="size-4" /> Console</Button>
             <Button variant="ghost" size="icon-sm" aria-label="Toggle theme" onClick={() => set({ dark: !dark })}>
@@ -555,10 +750,12 @@ export default function App() {
 
       <PageContainer>
         <PageHeader
-          title={tab === 'reader' ? 'Reader dashboard' : tab === 'tags' ? 'Tag read / write' : 'APDU console'}
+          title={tab === 'reader' ? 'Reader dashboard' : tab === 'scan' ? 'Scan & view' : tab === 'tags' ? 'Tag read / write' : 'APDU console'}
           desc={
             tab === 'reader'
               ? 'Identify the module, configure the SAM, and poll ISO14443A targets.'
+              : tab === 'scan'
+                ? 'Tap a tag to display its text or preview its link. Links never open without your permission.'
               : tab === 'tags'
                 ? 'MIFARE Classic blocks, NTAG pages, NDEF decode, and NDEF text/number/URL writing.'
                 : 'Raw PN532 command exchange with full HSU frame trace.'
@@ -572,6 +769,7 @@ export default function App() {
         <div className="grid gap-4">
           <ConnectionBar />
           {tab === 'reader' && <ReaderTab />}
+          {tab === 'scan' && <ScanTab />}
           {tab === 'tags' && <TagsTab />}
           {tab === 'console' && <ConsoleTab />}
         </div>

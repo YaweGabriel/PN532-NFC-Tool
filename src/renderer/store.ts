@@ -36,7 +36,7 @@ interface State {
   logs: LogEntry[]
   busy: boolean
   error: string | null
-  tab: 'reader' | 'tags' | 'console'
+  tab: 'reader' | 'tags' | 'console' | 'scan'
   dark: boolean
   set: (p: Partial<State>) => void
   pushLog: (e: LogEntry) => void
