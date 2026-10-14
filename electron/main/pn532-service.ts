@@ -99,6 +99,12 @@ export class Pn532Service {
     // Onboard USB bridges (CH340/CP2102) need a beat after open before TX is
     // reliable (nfcpy notes up to ~1s first-transfer latency on fresh opens).
     await sleep(300)
+    // Match browser/terminal line state: Web Serial asserts DTR+RTS on open.
+    // Some boards gate their enable/reset on these lines — without them the
+    // PN532 can sit silent even though the port opens fine.
+    await new Promise<void>((resolve) => {
+      this.port!.set({ dtr: true, rts: true }, () => resolve())
+    })
     this.log('info', `Opened ${portPath} @ ${baud} baud`)
     try {
       const fw = await this.handshake(baud)
@@ -292,7 +298,10 @@ export class Pn532Service {
       this.waiters.push({ resolve, reject, timer, wantCmd: wantRsp })
     })
     await new Promise<void>((resolve, reject) => {
-      this.port!.write(frame, (err) => (err ? reject(err) : resolve()))
+      // NB: must be a real Buffer — the native binding does not reliably
+      // accept bare Uint8Array, and a dropped write looks exactly like a
+      // silent module (TX is logged before the write happens).
+      this.port!.write(Buffer.from(frame), (err) => (err ? reject(err) : resolve()))
     })
     this.txTotal += frame.length
     const rsp = await promise
