@@ -1,0 +1,23 @@
+appId: com.pn532.studio
+productName: PN532 Studio
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: PN532-Studio-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PN532 Studio
+portable:
+  artifactName: PN532-Studio-${version}-portable.${ext}

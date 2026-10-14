@@ -1,0 +1,52 @@
+{
+  "name": "pn532-studio",
+  "version": "0.1.0",
+  "description": "Production-ready Windows desktop console for USB-powered PN532 v2.0 (HSU/UART) NFC/RFID module v3",
+  "author": "PN532 Studio",
+  "license": "MIT",
+  "private": true,
+  "main": "out/main/index.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "npm run build && electron-builder --win nsis portable",
+    "dist:win": "npm run build && electron-builder --win nsis portable",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "npm run lint"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.469.0",
+    "radix-ui": "^1.4.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "serialport": "^13.0.0",
+    "tailwind-merge": "^2.6.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^36.9.5",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6",
+    "vitest": "^2.1.8"
+  },
+  "allowScripts": {
+    "electron@36.9.5": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.21.5": true,
+    "@serialport/bindings-cpp@13.0.0": true
+  }
+}
