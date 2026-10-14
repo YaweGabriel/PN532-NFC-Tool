@@ -115,7 +115,7 @@ export class Pn532Service {
         )
       }
       throw new Error(
-        `PN532 sent ${this.rxTotal} byte(s) but no valid HSU frame @ ${this.baud} baud (tried 115200/57600). First bytes: ${this.firstRx.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') || '—'}. Likely baud mismatch or the module is in I2C/SPI mode — set BOTH DIP switches OFF for HSU and power-cycle. Last error: ${msg}`,
+        `PN532 sent ${this.rxTotal} byte(s) but no valid HSU frame @ ${this.baud} baud (swept 115200/57600/38400/19200/9600). First bytes: ${this.firstRx.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') || '—'}. Likely baud mismatch or the module is in I2C/SPI mode — set BOTH DIP switches OFF for HSU and power-cycle. Last error: ${msg}`,
       )
     }
   }
@@ -146,9 +146,11 @@ export class Pn532Service {
     this.baud = baud
   }
 
-  /** Wake-up + GetFirmwareVersion with retries and 115200/57600 fallback. */
+  /** Wake-up + GetFirmwareVersion with retries and a full baud sweep
+   *  (covers modules flashed with a non-default HSU rate). */
   private async handshake(preferredBaud: number): Promise<{ label: string }> {
-    const candidates = preferredBaud === 115200 ? [115200, 57600] : [preferredBaud, 115200]
+    const sweep = [115200, 57600, 38400, 19200, 9600]
+    const candidates = [preferredBaud, ...sweep.filter((b) => b !== preferredBaud)]
     let lastErr: Error = new Error('handshake never attempted')
     for (const b of candidates) {
       if (b !== this.baud) {
@@ -156,12 +158,12 @@ export class Pn532Service {
         await this.setBaud(b)
       }
       await this.wakeup()
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           return await this.getFirmwareVersion(1500)
         } catch (e) {
           lastErr = e as Error
-          this.log('info', `Handshake attempt ${attempt}/3 @ ${b} baud: ${lastErr.message}`)
+          this.log('info', `Handshake attempt ${attempt}/2 @ ${b} baud: ${lastErr.message}`)
           this.rxBuf = []
           await sleep(200)
         }
