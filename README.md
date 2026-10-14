@@ -43,6 +43,28 @@ git remote add origin https://github.com/<you>/pn532-studio.git
 git push -u origin main
 ```
 
+## Troubleshooting: "PN532 is silent / did not answer"
+
+The port opened but the module sent back 0 bytes. Work through this order:
+
+1. **Right COM port?** In Device Manager → Ports, unplug the USB-TTL adapter and
+   see which COM disappears. Replug, pick that one. Do NOT pick modem/Bluetooth
+   ports (e.g. Intel AMT SOL). Install the adapter driver (CH340 / CP210x / PL2303)
+   if no new COM appears.
+2. **HSU mode?** Set BOTH DIP switches **OFF** (HSU per the Elechouse V3 manual;
+   I2C = CH1 ON, SPI = CH2 ON). Then **power-cycle the module** — the interface
+   is latched at power-up, flipping switches live does nothing. HSU shares pins
+   with I2C: use the **TXD/RXD** labels (printed on the back of some boards).
+3. **Wiring (must be crossed + common ground):** adapter **TX → module RX**,
+   adapter **RX → module TX**, **GND → GND**. Straight TX→TX/RX→RX is the #1
+   wiring mistake and gives exactly this silence.
+4. **Power:** feed VCC (5V, or 3.3V) + GND from the adapter/USB. The app sends a
+   libnfc-style HSU wake-up pulse (`55 55 00…`), retries 3×, and falls back
+   115200 → 57600 automatically, so a silent module is a hardware-side issue.
+5. Still silent? Try another USB cable/port, another adapter, and confirm with a
+   loopback test (short adapter TX to RX — typed characters should echo in a
+   serial terminal) to rule out a dead adapter.
+
 ## Protocol notes
 
 HSU frame: `00 00 FF LEN LCS [D4 CMD …] DCS 00`; ACK `00 00 FF 00 FF 00`.

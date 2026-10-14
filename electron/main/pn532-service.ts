@@ -43,6 +43,7 @@ export class Pn532Service {
   private firmware: string | null = null
   private lastTarget: TargetInfo | null = null
   private mock = false
+  private rxTotal = 0
 
   onLog(cb: (e: LogEntry) => void) {
     this.logCb = cb
@@ -74,6 +75,7 @@ export class Pn532Service {
     await this.disconnect()
     this.portPath = portPath
     this.baud = baud
+    this.rxTotal = 0
     if (portPath === '__mock__') {
       this.mock = true
       this.firmware = `PN532 v${MOCK_FIRMWARE.ver}.${MOCK_FIRMWARE.rev} (mock)`
@@ -88,18 +90,74 @@ export class Pn532Service {
     })
     this.port.on('data', (chunk: Buffer) => this.onData([...chunk]))
     this.port.on('error', (err) => this.log('error', `Serial error: ${err.message}`))
-    // Wake-up: HSU requires preamble per manual; send SAM config probe
     this.log('info', `Opened ${portPath} @ ${baud} baud`)
     try {
-      const fw = await this.getFirmwareVersion()
+      const fw = await this.handshake(baud)
       this.firmware = fw.label
       await this.samConfiguration()
       return { ok: true, mock: false, message: `Connected — ${fw.label}` }
     } catch (e) {
       const msg = (e as Error).message
       this.log('error', `PN532 handshake failed: ${msg}`)
-      throw new Error(`Port opened but PN532 did not answer. Check HSU/UART switch + 115200 baud. (${msg})`)
+      await this.disconnect().catch(() => undefined)
+      if (this.rxTotal === 0) {
+        throw new Error(
+          `PN532 is silent — 0 bytes came back on ${portPath}. Most likely: (1) wrong COM port selected (in Device Manager, unplug the USB-TTL adapter and see which COM disappears — don't pick modem/Bluetooth ports like Intel AMT SOL); (2) module not in HSU mode — set BOTH DIP switches OFF, then POWER-CYCLE the module (mode is latched at power-up); (3) wiring — adapter TX → module RX, adapter RX → module TX, GND → GND (must be crossed + common ground); (4) module not powered — feed VCC 5V (or 3.3V) from the adapter. Last error: ${msg}`,
+        )
+      }
+      throw new Error(
+        `PN532 sent ${this.rxTotal} byte(s) but no valid HSU frame @ ${this.baud} baud (tried 115200/57600). Likely baud mismatch or the module is in I2C/SPI mode — set BOTH DIP switches OFF for HSU and power-cycle. Last error: ${msg}`,
+      )
     }
+  }
+
+  /** HSU wake-up pulse (libnfc sequence): 0x55 0x55 + zeros, then settle.
+   *  Harmless when already awake — the PN532 ignores non-preamble bytes. */
+  private async wakeup(): Promise<void> {
+    await this.writeRaw([0x55, 0x55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    await sleep(150)
+    await new Promise<void>((resolve) => this.port!.flush(() => resolve()))
+    this.rxBuf = []
+  }
+
+  private async writeRaw(bytes: number[]): Promise<void> {
+    if (!this.port?.isOpen) throw new Error('Not connected')
+    await new Promise<void>((resolve, reject) => {
+      this.port!.write(Buffer.from(bytes), (err) => (err ? reject(err) : resolve()))
+    })
+    await new Promise<void>((resolve) => this.port!.drain(() => resolve()))
+  }
+
+  private async setBaud(baud: number): Promise<void> {
+    if (!this.port) throw new Error('Not connected')
+    await new Promise<void>((resolve, reject) => {
+      this.port!.update({ baudRate: baud }, (err) => (err ? reject(err) : resolve()))
+    })
+    this.baud = baud
+  }
+
+  /** Wake-up + GetFirmwareVersion with retries and 115200/57600 fallback. */
+  private async handshake(preferredBaud: number): Promise<{ label: string }> {
+    const candidates = preferredBaud === 115200 ? [115200, 57600] : [preferredBaud, 115200]
+    let lastErr: Error = new Error('handshake never attempted')
+    for (const b of candidates) {
+      if (b !== this.baud) {
+        this.log('info', `Trying ${b} baud…`)
+        await this.setBaud(b)
+      }
+      await this.wakeup()
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          return await this.getFirmwareVersion(1500)
+        } catch (e) {
+          lastErr = e as Error
+          this.log('info', `Handshake attempt ${attempt}/3 @ ${b} baud: ${lastErr.message}`)
+          this.rxBuf = []
+          await sleep(200)
+        }
+      }
+    }
+    throw lastErr
   }
 
   async disconnect(): Promise<{ ok: boolean }> {
@@ -130,6 +188,7 @@ export class Pn532Service {
   }
 
   private onData(bytes: number[]) {
+    this.rxTotal += bytes.length
     this.rxBuf.push(...bytes)
     for (;;) {
       let decoded: { frame: DecodedFrame; consumed: number } | null = null
@@ -185,8 +244,8 @@ export class Pn532Service {
   }
 
   // ---- high-level ops ----
-  async getFirmwareVersion() {
-    const data = await this.transact(CMD.GetFirmwareVersion, [], 2000)
+  async getFirmwareVersion(timeoutMs = 2000) {
+    const data = await this.transact(CMD.GetFirmwareVersion, [], timeoutMs)
     const info = parseFirmwareVersion(data)
     this.firmware = info.label
     return { ...info }
@@ -345,8 +404,11 @@ export class Pn532Service {
   }
 }
 
-function parseKey(keyHex: string): number[] {
-  const clean = keyHex.replace(/[^0-9a-fA-F]/g, '')
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function parseKey(keyHex: string): number[] {  const clean = keyHex.replace(/[^0-9a-fA-F]/g, '')
   if (clean.length !== 12) throw new Error('Key must be 6 bytes (12 hex chars), e.g. FFFFFFFFFFFF')
   const out: number[] = []
   for (let i = 0; i < 12; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16))
