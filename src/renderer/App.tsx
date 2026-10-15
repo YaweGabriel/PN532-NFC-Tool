@@ -16,7 +16,7 @@ function PageHeader({ title, desc, right }: { title: string; desc: string; right
   return (
     <div className="flex flex-wrap items-end justify-between gap-4 py-8">
       <div>
-        <p className="eyebrow text-muted-foreground">PN532 Studio · HSU 115200</p>
+        <p className="eyebrow text-muted-foreground">PN532 Studio</p>
         <h1 className="heading text-4xl mt-2">{title}</h1>
         <p className="text-sm text-muted-foreground mt-2 max-w-xl">{desc}</p>
       </div>
@@ -87,7 +87,7 @@ function ConnectionBar() {
     <Card>
       <CardHeader>
         <CardTitle>Connection</CardTitle>
-        <CardDescription>USB-serial HSU · Elechouse PN532 V3 — set S1/S2 to HSU/UART, 115200 baud.</CardDescription>
+        <CardDescription>Plug in your reader, choose its port, and connect.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 md:grid-cols-[1fr_140px_auto_auto_auto]">
@@ -134,12 +134,12 @@ function ConnectionBar() {
         </div>
         <details className="mt-4 rounded-md border bg-surface px-4 py-3">
           <summary className="cursor-pointer text-sm font-medium">
-            Module silent? Run the adapter loopback self-test
+            Reader not responding? Test the adapter
           </summary>
           <p className="mt-2 text-sm text-muted-foreground">
-            Unplug the PN532 module, short the adapter's <span className="font-mono">TX to RX</span> with a
-            jumper wire, then run the test. A <span className="font-mono">PASS</span> proves PC → driver →
-            adapter works and the fault is module-side (switches / wiring / power).
+            Unplug the reader, join the adapter's <span className="font-mono">TX</span> and{' '}
+            <span className="font-mono">RX</span> pins with a short wire, then run the test. A{' '}
+            <span className="font-mono">PASS</span> means your computer side works and the problem is on the reader itself.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
@@ -211,7 +211,7 @@ function ReaderTab() {
       <Card>
         <CardHeader>
           <CardTitle>Reader</CardTitle>
-          <CardDescription>GetFirmwareVersion · SAMConfiguration · InListPassiveTarget</CardDescription>
+          <CardDescription>Check the reader and look for nearby cards.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3">
@@ -221,7 +221,7 @@ function ReaderTab() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={readFw} disabled={!connected} loading={busy}>
-                Identify + SAM config
+                Check reader
               </Button>
               <Button variant="default" onClick={pollOnce} disabled={!connected} loading={busy}>
                 <Radio className="size-4" /> Poll once
@@ -242,16 +242,23 @@ function ReaderTab() {
         </CardHeader>
         <CardContent>
           {target?.found ? (
-            <dl className="grid gap-2 font-mono text-sm">
-              <div className="flex justify-between border-b py-1.5"><dt className="text-muted-foreground">UID</dt><dd>{target.uid}</dd></div>
-              <div className="flex justify-between border-b py-1.5"><dt className="text-muted-foreground">SAK</dt><dd>{target.sak}</dd></div>
-              <div className="flex justify-between border-b py-1.5"><dt className="text-muted-foreground">TYPE</dt><dd>{target.type}</dd></div>
-              <div className="flex justify-between py-1.5"><dt className="text-muted-foreground">RAW</dt><dd className="text-xs">{target.raw}</dd></div>
-            </dl>
+            <div className="grid gap-2">
+              <dl className="grid gap-2 font-mono text-sm">
+                <div className="flex justify-between border-b py-1.5"><dt className="font-sans text-muted-foreground">Card ID</dt><dd>{target.uid}</dd></div>
+                <div className="flex justify-between py-1.5"><dt className="font-sans text-muted-foreground">Card type</dt><dd>{target.type}</dd></div>
+              </dl>
+              <details className="rounded-md border bg-surface px-3 py-2">
+                <summary className="cursor-pointer font-mono text-xs uppercase tracking-wider text-muted-foreground">Technical details</summary>
+                <dl className="mt-2 grid gap-1.5 font-mono text-xs">
+                  <div className="flex justify-between"><dt className="text-muted-foreground">SAK</dt><dd>{target.sak}</dd></div>
+                  <div className="flex justify-between gap-4"><dt className="shrink-0 text-muted-foreground">Raw</dt><dd className="break-all text-right">{target.raw}</dd></div>
+                </dl>
+              </details>
+            </div>
           ) : (
             <div className="bg-dots rounded-md border p-8 text-center">
               <Nfc className="mx-auto size-8 text-muted-foreground" />
-              <p className="mt-3 text-sm text-muted-foreground">Hold an ISO14443A / MIFARE / NTAG tag to the antenna.</p>
+              <p className="mt-3 text-sm text-muted-foreground">Hold a card or tag close to the antenna.</p>
             </div>
           )}
         </CardContent>
@@ -313,7 +320,7 @@ function TagsTab() {
       <Card>
         <CardHeader>
           <CardTitle>MIFARE Classic</CardTitle>
-          <CardDescription>Auth (Key {keyType}) → read / write 16-byte block. Trailer blocks protected.</CardDescription>
+          <CardDescription>Read and write card blocks with a key. Protected blocks stay locked.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3">
@@ -322,9 +329,9 @@ function TagsTab() {
               <div className="grid gap-1.5"><Label>Key type</Label>
                 <Select value={keyType} onChange={(e) => setKeyType(e.target.value as 'A' | 'B')}><option value="A">Key A</option><option value="B">Key B</option></Select>
               </div>
-              <div className="grid gap-1.5"><Label>Key (hex)</Label><Input value={key} onChange={(e) => setKey(e.target.value)} /></div>
+              <div className="grid gap-1.5"><Label>Key</Label><Input value={key} onChange={(e) => setKey(e.target.value)} /></div>
             </div>
-            <div className="grid gap-1.5"><Label>Block data (16 bytes hex)</Label><Input value={dataHex} onChange={(e) => setDataHex(e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>Block data</Label><Input value={dataHex} onChange={(e) => setDataHex(e.target.value)} /></div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" disabled={!connected} loading={busy} onClick={() => run(() => api().mifareRead({ block, key, keyType }), 'READ')}>Read block</Button>
               <Button variant="ink" disabled={!connected || !target?.found} loading={busy} onClick={() => run(() => api().mifareWrite({ block, key, keyType, dataHex }), 'WRITE')}>Write block</Button>
@@ -336,13 +343,13 @@ function TagsTab() {
       <Card>
         <CardHeader>
           <CardTitle>NTAG / Ultralight + NDEF</CardTitle>
-          <CardDescription>4-byte pages · pages 0–3 locked · NDEF TLV decode.</CardDescription>
+          <CardDescription>Read and write small memory pages, or see what's stored on the tag.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3">
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1.5"><Label>Page</Label><Input type="number" min={4} max={135} value={page} onChange={(e) => setPage(Number(e.target.value))} /></div>
-              <div className="grid gap-1.5"><Label>Page data (4 bytes)</Label><Input value={pageHex} onChange={(e) => setPageHex(e.target.value)} /></div>
+              <div className="grid gap-1.5"><Label>Page data</Label><Input value={pageHex} onChange={(e) => setPageHex(e.target.value)} /></div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" disabled={!connected} loading={busy} onClick={() => run(() => api().ntagRead(page), 'PAGE')}>Read page</Button>
@@ -400,8 +407,8 @@ function NdefWriteCard() {
       <CardHeader>
         <CardTitle>Write text · number · URL to tag</CardTitle>
         <CardDescription>
-          NDEF record → NTAG/Ultralight user memory from page 4. Capacity is read from the
-          tag first; pages 0–3 are never touched. Hold the tag steady until the write finishes.
+          Write a message to the tag. The app checks the tag has room first and never touches
+          its protected area. Hold the tag steady until it finishes.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -419,7 +426,7 @@ function NdefWriteCard() {
             </Select>
           </div>
           <div className="grid gap-1.5">
-            <Label>{kind === 'text' ? 'Text' : kind === 'number' ? 'Number (stored as text)' : 'URL (https:// compressed automatically)'}</Label>
+            <Label>{kind === 'text' ? 'Text' : kind === 'number' ? 'Number' : 'URL'}</Label>
             <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={kind === 'uri' ? 'https://…' : kind === 'number' ? '42' : 'Hello NFC'} />
           </div>
           {kind === 'text' ? (
@@ -435,7 +442,7 @@ function NdefWriteCard() {
           </Button>
           {preview.ok ? (
             <span className="font-mono text-xs text-muted-foreground">
-              {preview.bytes}B · {preview.pages} pages · fits NTAG213 (144B){preview.bytes > 144 ? ' — NO, too big, shorten it' : ''}
+              {preview.bytes} bytes · {preview.pages} pages{preview.bytes > 144 ? ' — too big for small tags, shorten it' : ''}
             </span>
           ) : (
             <span className="font-mono text-xs text-destructive">{preview.error}</span>
@@ -603,7 +610,7 @@ function ScanTab() {
         <Card>
           <CardHeader>
             <CardTitle>{result.type ?? 'Tag'}</CardTitle>
-            <CardDescription>UID {result.uid ?? '?'}</CardDescription>
+            <CardDescription>Card ID {result.uid ?? '?'}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
@@ -665,8 +672,8 @@ function ConsoleTab() {  const logs = useStore((s) => s.logs)
     <div className="grid gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Raw PN532 command</CardTitle>
-          <CardDescription>Hex bytes, e.g. 02 = GetFirmwareVersion · 4A 01 00 = InListPassiveTarget</CardDescription>
+          <CardTitle>Raw command</CardTitle>
+          <CardDescription>Type a command as hex bytes and send it to the reader.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
@@ -678,15 +685,15 @@ function ConsoleTab() {  const logs = useStore((s) => s.logs)
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Frame log</CardTitle>
-          <CardDescription>TX/RX HSU frames · newest last · capped at 500</CardDescription>
+          <CardTitle>Conversation log</CardTitle>
+          <CardDescription>Everything sent and received · newest last · keeps the most recent 500.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-3 flex justify-end">
             <Button variant="ghost" size="sm" onClick={clearLogs}><Trash2 className="size-4" /> Clear</Button>
           </div>
           <div className="max-h-96 overflow-auto rounded-md border bg-surface">
-            {logs.length === 0 && <p className="p-4 font-mono text-xs text-muted-foreground">— no frames yet —</p>}
+            {logs.length === 0 && <p className="p-4 font-mono text-xs text-muted-foreground">— nothing here yet —</p>}
             {logs.map((l) => (
               <div key={l.id} className="grid grid-cols-[64px_1fr] gap-2 border-b px-3 py-1.5 font-mono text-xs last:border-0">
                 <span className={l.dir === 'tx' ? 'text-brand' : l.dir === 'rx' ? 'text-success' : l.dir === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
@@ -733,7 +740,7 @@ export default function App() {
             <span className="flex size-9 items-center justify-center rounded-md bg-ink text-ink-foreground"><Nfc className="size-5" /></span>
             <div>
               <p className="heading text-lg leading-none">PN532 Studio</p>
-              <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">USB · HSU · Windows</p>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">USB reader console</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -753,12 +760,12 @@ export default function App() {
           title={tab === 'reader' ? 'Reader dashboard' : tab === 'scan' ? 'Scan & view' : tab === 'tags' ? 'Tag read / write' : 'APDU console'}
           desc={
             tab === 'reader'
-              ? 'Identify the module, configure the SAM, and poll ISO14443A targets.'
+              ? 'Check your reader and look for nearby cards.'
               : tab === 'scan'
                 ? 'Tap a tag to display its text or preview its link. Links never open without your permission.'
               : tab === 'tags'
-                ? 'MIFARE Classic blocks, NTAG pages, NDEF decode, and NDEF text/number/URL writing.'
-                : 'Raw PN532 command exchange with full HSU frame trace.'
+                ? 'Read and write cards, see what is stored on them, and save new messages.'
+                : 'Send raw commands and watch the conversation.'
           }
         />
         {error && (
@@ -773,9 +780,6 @@ export default function App() {
           {tab === 'tags' && <TagsTab />}
           {tab === 'console' && <ConsoleTab />}
         </div>
-        <footer className="mt-10 border-t pt-4 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-          opendraft tokens · no hardcoded colors · HSU frame 00 00 FF … · Elechouse PN532 V3
-        </footer>
       </PageContainer>
     </div>
   )
