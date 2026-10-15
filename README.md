@@ -1,5 +1,10 @@
 # PN532 Studio — Windows desktop console for USB-powered PN532 v2.0 (HSU) module v3
 
+> **Live web demo:** `https://pn532-nfc-tool.vercel.app` (import this repo at
+> [vercel.com/new](https://vercel.com/new) — `vercel.json` is preconfigured).
+> No install needed: explore everything with the built-in **Mock device**, or
+> connect real hardware in **Chrome/Edge** via Web Serial (HTTPS included).
+
 Production-ready Electron + Vite + React 19 + TypeScript app for the Elechouse-style
 **PN532 NFC/RFID Module V3** (USB-powered, HSU/UART mode). UI tokens and core
 components come from **[opendraft UI System](https://ui-system-virid.vercel.app/)**

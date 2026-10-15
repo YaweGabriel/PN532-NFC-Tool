@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:web": "vite build -c vite.web.config.ts",
     "preview": "electron-vite preview",
     "dist": "npm run build && electron-builder --win nsis portable",
     "dist:win": "npm run build && electron-builder --win nsis portable",

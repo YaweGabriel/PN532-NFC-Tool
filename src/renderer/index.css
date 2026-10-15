@@ -2,6 +2,12 @@
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap");
 @import "tailwindcss";
 
+/* Explicit content sources: the web demo build roots Vite at src/web, so
+   automatic detection would miss the shared UI outside that folder. */
+@source "../renderer";
+@source "../shared";
+@source "../web";
+
 @custom-variant dark (&:is(.dark, .dark *));
 
 :root {

@@ -12,6 +12,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "paths": { "@/*": ["./src/renderer/*"], "@shared/*": ["./src/shared/*"] }
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*", "src/**/*.test.ts"],
+  "include": ["src/renderer/**/*", "src/web/**/*", "src/shared/**/*", "src/**/*.test.ts"],
   "exclude": ["node_modules", "out", "dist"]
 }

@@ -44,8 +44,7 @@ function ConnectionBar() {
   const { ports, port, baud, connected, mock, busy, set } = useStore()
   const [echo, setEcho] = useState<string | null>(null)
   const [echoBusy, setEchoBusy] = useState(false)
-  const refresh = async () => {
-    set({ busy: true, error: null })
+  const refresh = async () => {    set({ busy: true, error: null })
     try {
       const list = await api().listPorts()
       set({ ports: [...list, { path: '__mock__', friendly: 'Mock device (no hardware)' }] })
@@ -114,6 +113,28 @@ function ConnectionBar() {
             <Button variant="outline" size="icon" onClick={refresh} aria-label="Refresh ports" disabled={busy}>
               <RefreshCw className="size-4" />
             </Button>
+            {typeof api().pickPort === 'function' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={async () => {
+                  set({ busy: true, error: null })
+                  try {
+                    const list = (await api().pickPort()) as Array<{ path: string; friendly?: string }>
+                    set({ ports: list })
+                    const real = [...list].reverse().find((p) => p.path !== '__mock__')
+                    if (real) set({ port: real.path })
+                  } catch (e) {
+                    set({ error: (e as Error).message })
+                  } finally {
+                    set({ busy: false })
+                  }
+                }}
+              >
+                New device…
+              </Button>
+            )}
             {connected ? (
               <Button variant="destructive" onClick={disconnect}>
                 <Unplug className="size-4" /> Disconnect
@@ -132,6 +153,11 @@ function ConnectionBar() {
             )}
           </div>
         </div>
+        {typeof api().pickPort === 'function' && api().webSerial && !api().webSerial() && (
+          <p className="mt-3 text-sm text-muted-foreground">
+            This browser can't reach USB hardware — use Chrome or Edge for the real reader, or explore everything with the Mock device.
+          </p>
+        )}
         <details className="mt-4 rounded-md border bg-surface px-4 py-3">
           <summary className="cursor-pointer text-sm font-medium">
             Reader not responding? Test the adapter
